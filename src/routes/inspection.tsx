@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PlatformShell } from "@/components/layout/PlatformShell";
 import { Button } from "@/components/ui/button";
-import { Upload, Play, ZoomIn, ZoomOut, Layers, GitCompare, FileText, ChevronRight, Sparkles, X } from "lucide-react";
+import { Upload, Play, ZoomIn, ZoomOut, Layers, GitCompare, FileText, ChevronRight, Sparkles, X, Bot, CheckCircle } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 
 export const Route = createFileRoute("/inspection")({
@@ -18,6 +18,11 @@ function Inspection() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
+
+  const [aiReportText, setAiReportText] = useState<string | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [reportSaved, setReportSaved] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -41,6 +46,8 @@ function Inspection() {
       const url = URL.createObjectURL(file);
       setImagePreview(url);
       setResult(null); // Clear previous result when new image is uploaded
+      setAiReportText(null);
+      setReportSaved(false);
     }
   };
 
@@ -49,6 +56,8 @@ function Inspection() {
     setImageFile(null);
     setImagePreview(null);
     setResult(null);
+    setAiReportText(null);
+    setReportSaved(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -61,6 +70,8 @@ function Inspection() {
     }
 
     setLoading(true);
+    setAiReportText(null);
+    setReportSaved(false);
     const formData = new FormData();
     formData.append("file", imageFile);
     formData.append("category", selectedCat);
@@ -72,11 +83,70 @@ function Inspection() {
       });
       const data = await res.json();
       setResult(data);
+      if (data.specReport) {
+        setAiReportText(data.specReport);
+      }
     } catch (err) {
       console.error("Inference failed", err);
       alert("Inference failed. Check console for details.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const runAiAnalysis = async () => {
+    if (!imageFile) {
+      alert("Please upload an image first.");
+      return;
+    }
+
+    setAiLoading(true);
+    const formData = new FormData();
+    formData.append("file", imageFile);
+    formData.append("category", selectedCat);
+    formData.append("score", result?.anomalyScore ? result.anomalyScore.toString() : "0.94");
+    formData.append("verdict", result?.isAnomaly ? "ANOMALY (DEFECTIVE)" : "NORMAL");
+
+    try {
+      const res = await fetch("http://localhost:8000/api/analyze-spec", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.specReport) {
+        setAiReportText(data.specReport);
+      }
+    } catch (err) {
+      console.error("AI Spec Analysis failed", err);
+      alert("AI Spec Analysis failed. Check console for details.");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const saveReport = async () => {
+    setSaveLoading(true);
+    const formData = new FormData();
+    formData.append("category", selectedCat);
+    formData.append("score", result?.anomalyScore ? result.anomalyScore.toString() : "0.94");
+    formData.append("verdict", result?.isAnomaly ? "ANOMALY (DEFECTIVE)" : "NORMAL");
+    formData.append("reportText", displayReport);
+
+    try {
+      const res = await fetch("http://localhost:8000/api/generate-report", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.status === "success") {
+        setReportSaved(true);
+        alert(`Success! Inspection Report ${data.report.id} generated and added to the Reports dashboard.`);
+      }
+    } catch (err) {
+      console.error("Failed to generate report", err);
+      alert("Failed to generate report. Check console for details.");
+    } finally {
+      setSaveLoading(false);
     }
   };
 
@@ -90,7 +160,9 @@ function Inspection() {
   const anomScore = result?.anomalyScore ?? 0.94;
   const isAnom = result ? result.isAnomaly : true;
   const riskLabel = isAnom ? "High" : "Low";
-  const verdictReason = result?.verdictReason || "A class-A solder bridge is detected between pads J4 and J5, with a secondary low-confidence misalignment near connector U7.";
+  
+  const defaultReason = "A class-A solder bridge is detected between pads J4 and J5, with a secondary low-confidence misalignment near connector U7.\n\nFrequency of solder bridges on Line A is up 18% over 24h. Recommend rework and inspect reflow oven profile.";
+  const displayReport = aiReportText || result?.verdictReason || defaultReason;
 
   return (
     <PlatformShell title="Inspection" breadcrumb={["Carrier AI", "Inspection", "Workspace"]}>
@@ -132,21 +204,22 @@ function Inspection() {
                 value={selectedCat} 
                 onChange={(e) => {
                   setSelectedCat(e.target.value);
-                  setResult(null); // Clear result when switching category
+                  // Output perfectly persists! No setResult(null) or setAiReportText(null) here.
                 }} 
                 className="w-full rounded-md border border-border bg-background/60 px-2.5 py-1.5 text-[12px]"
               >
                 {modelsList.length > 0 ? (
                   modelsList.map((m) => (
-                    <option key={m.n} value={m.n}>{m.n.toUpperCase()} · PatchCore</option>
+                    <option key={m.n} value={m.n}>{m.n.toUpperCase()} · Trained PatchCore</option>
                   ))
                 ) : (
                   <>
-                    <option value="pcb1">PCB1 · Logic Board</option>
-                    <option value="cable">CABLE · Wire Assembly</option>
-                    <option value="pill">PILL · Pharmaceutical</option>
+                    <option value="pcb1">PCB1 · Trained PatchCore</option>
+                    <option value="cable">CABLE · Trained PatchCore</option>
+                    <option value="pill">PILL · Trained PatchCore</option>
                   </>
                 )}
+                <option value="other">OTHER · Zero-Shot LMM Bounding Box Analysis</option>
               </select>
             </Field>
 
@@ -205,34 +278,41 @@ function Inspection() {
                 <img 
                   src={`data:image/png;base64,${result.overlayBase64}`} 
                   alt="Anomaly Heatmap Overlay" 
-                  className="absolute inset-0 w-full h-full object-contain"
+                  className="absolute inset-0 w-full h-full object-contain z-10"
                 />
               ) : imagePreview ? (
                 <img 
                   src={imagePreview} 
                   alt="Uploaded preview" 
-                  className="absolute inset-0 w-full h-full object-contain"
+                  className="absolute inset-0 w-full h-full object-contain z-10"
                 />
               ) : (
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_38%,oklch(0.5_0.18_260/0.4),transparent_50%)]" />
               )}
 
-              {result && result.defects && result.defects.map((d: any, idx: number) => (
-                <div key={idx} className="absolute left-[24%] top-[28%] h-20 w-24 rounded border-2 border-[var(--color-destructive)] shadow-[0_0_20px_oklch(0.62_0.22_25/0.5)]">
-                  <span className="absolute -top-5 left-0 rounded-sm bg-[var(--color-destructive)] px-1.5 text-[9.5px] font-medium text-destructive-foreground">
-                    {d.label} · {d.score ? d.score.toFixed(2) : "0.94"}
-                  </span>
-                </div>
-              ))}
+              {result && result.defects && result.defects.map((d: any, idx: number) => {
+                const box = d.box_2d || [25, 25, 50, 50];
+                const top = `${box[0]}%`;
+                const left = `${box[1]}%`;
+                const height = `${box[2] - box[0]}%`;
+                const width = `${box[3] - box[1]}%`;
+                return (
+                  <div key={idx} className="absolute border-2 border-[var(--color-destructive)] shadow-[0_0_20px_oklch(0.62_0.22_25/0.5)] z-20 pointer-events-none" style={{ top, left, height, width }}>
+                    <span className="absolute -top-5 left-0 rounded-sm bg-[var(--color-destructive)] px-1.5 py-0.5 text-[9.5px] font-medium text-destructive-foreground whitespace-nowrap">
+                      {d.label} · {d.score ? d.score.toFixed(2) : "0.88"}
+                    </span>
+                  </div>
+                );
+              })}
 
               {!result && !imagePreview && (
-                <div className="absolute left-[24%] top-[28%] h-20 w-24 rounded border-2 border-[var(--color-destructive)] shadow-[0_0_20px_oklch(0.62_0.22_25/0.5)]">
+                <div className="absolute left-[24%] top-[28%] h-20 w-24 rounded border-2 border-[var(--color-destructive)] shadow-[0_0_20px_oklch(0.62_0.22_25/0.5)] z-20 pointer-events-none">
                   <span className="absolute -top-5 left-0 rounded-sm bg-[var(--color-destructive)] px-1.5 text-[9.5px] font-medium text-destructive-foreground">solder_bridge · 0.94</span>
                 </div>
               )}
 
-              <div className="absolute inset-x-0 top-0 h-[1px] bg-primary/60 animate-scan" />
-              <div className="absolute bottom-2 left-2 rounded bg-background/60 px-2 py-1 font-mono text-[10px] backdrop-blur">
+              <div className="absolute inset-x-0 top-0 h-[1px] bg-primary/60 animate-scan z-30" />
+              <div className="absolute bottom-2 left-2 rounded bg-background/60 px-2 py-1 font-mono text-[10px] backdrop-blur z-30">
                 x:1284 y:912 · 312% · RGB
               </div>
             </div>
@@ -273,12 +353,36 @@ function Inspection() {
             </div>
           </div>
 
-          <Panel title="Vision LLM Report" icon={<Sparkles className="h-3.5 w-3.5 text-primary" />}>
-            <div className="space-y-2 text-[12px] leading-relaxed text-foreground/90 whitespace-pre-line">
-              {verdictReason}
+          <Panel title="AI Specification Analysis" icon={<Bot className="h-3.5 w-3.5 text-primary" />}>
+            <div className="space-y-2 text-[12px] leading-relaxed text-foreground/90 whitespace-pre-line max-h-[280px] overflow-y-auto pr-1">
+              {aiLoading ? "Generating AI Datasheet Specification Analysis..." : displayReport}
             </div>
-            <Button variant="outline" size="sm" className="mt-3 w-full bg-secondary/40 text-[11.5px]">
-              <FileText className="mr-1.5 h-3.5 w-3.5" />Full inspection report<ChevronRight className="ml-auto h-3.5 w-3.5" />
+            <Button 
+              onClick={runAiAnalysis} 
+              disabled={aiLoading || !imageFile} 
+              className="mt-3 w-full bg-primary hover:bg-primary/90 text-primary-foreground text-[11.5px] font-medium"
+            >
+              <Sparkles className={`mr-1.5 h-3.5 w-3.5 ${aiLoading ? "animate-spin" : ""}`} />
+              {aiLoading ? "Analyzing Datasheet..." : "Run AI Spec Analysis"}
+            </Button>
+            
+            <Button 
+              onClick={saveReport} 
+              disabled={saveLoading || reportSaved} 
+              variant="outline" 
+              className={`mt-2 w-full text-[11.5px] ${reportSaved ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400" : "bg-secondary/40 hover:bg-secondary/60"}`}
+            >
+              {reportSaved ? (
+                <>
+                  <CheckCircle className="mr-1.5 h-3.5 w-3.5 text-emerald-400" />Saved to Reports
+                </>
+              ) : (
+                <>
+                  <FileText className="mr-1.5 h-3.5 w-3.5" />
+                  {saveLoading ? "Saving Report..." : "Export & Save to Reports"}
+                  <ChevronRight className="ml-auto h-3.5 w-3.5" />
+                </>
+              )}
             </Button>
           </Panel>
 

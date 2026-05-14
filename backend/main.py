@@ -188,46 +188,48 @@ def get_models_info():
         "driftSeries": drift_series,
     }
 
+REPORTS_LIST = [
+    {
+        "id": "RPT-2419", "t": "Line A · Weekly Inspection Summary", "d": "May 11 — May 17",
+        "risk": "low", "op": "E. Marlow", "st": "signed",
+        "summary": "Defect rate decreased 12% week-over-week. Solder bridge frequency increased in shifts S3–S4 — recommend reflow oven recalibration.",
+        "details": "Reviewed all 12 critical events across 13,482 inspections. Two confirmed false positives reclassified.",
+        "defects": 42, "rate": "0.31%"
+    },
+    {
+        "id": "RPT-2418", "t": "Casting Block · Compliance Audit", "d": "Apr 2026",
+        "risk": "med", "op": "K. Ito", "st": "review",
+        "summary": "Minor surface porosity observed in Batch #402. Structural integrity verified via ultrasound.",
+        "details": "Inpsected 8,420 cast blocks. Recommended die polishing cycle advance.",
+        "defects": 68, "rate": "0.81%"
+    },
+    {
+        "id": "RPT-2417", "t": "Solder Bridge Incident Investigation", "d": "May 10",
+        "risk": "high", "op": "E. Marlow", "st": "signed",
+        "summary": "Class-A solder bridge spike triggered automated line pause. Root cause: solder paste viscosity degradation.",
+        "details": "All affected boards routed to rework station. Paste dispensing nozzle cleaned and recalibrated.",
+        "defects": 19, "rate": "4.20%"
+    },
+    {
+        "id": "RPT-2416", "t": "Quarterly Model Fleet Performance", "d": "Q1 2026",
+        "risk": "low", "op": "MLOps Engine", "st": "signed",
+        "summary": "All 9 active PatchCore models operating within 99.1% Recall@1 SLA. Distribution drift remained below KL 0.08 threshold.",
+        "details": "Automated active learning injected 14,200 verified normal feature vectors into coreset memory banks.",
+        "defects": 312, "rate": "0.24%"
+    },
+    {
+        "id": "RPT-2415", "t": "Weld Joint Failure Audit", "d": "May 7",
+        "risk": "high", "op": "S. Vora", "st": "signed",
+        "summary": "Incomplete weld penetration detected on chassis sub-assembly. Shielding gas flow rate fluctuations identified.",
+        "details": "Gas manifold pressure regulator replaced. Re-inspected 450 units with zero subsequent anomalies.",
+        "defects": 14, "rate": "3.11%"
+    },
+]
+
 @app.get("/api/reports")
 def get_reports_info():
-    reports = [
-        {
-            "id": "RPT-2419", "t": "Line A · Weekly Inspection Summary", "d": "May 11 — May 17",
-            "risk": "low", "op": "E. Marlow", "st": "signed",
-            "summary": "Defect rate decreased 12% week-over-week. Solder bridge frequency increased in shifts S3–S4 — recommend reflow oven recalibration.",
-            "details": "Reviewed all 12 critical events across 13,482 inspections. Two confirmed false positives reclassified.",
-            "defects": 42, "rate": "0.31%"
-        },
-        {
-            "id": "RPT-2418", "t": "Casting Block · Compliance Audit", "d": "Apr 2026",
-            "risk": "med", "op": "K. Ito", "st": "review",
-            "summary": "Minor surface porosity observed in Batch #402. Structural integrity verified via ultrasound.",
-            "details": "Inpsected 8,420 cast blocks. Recommended die polishing cycle advance.",
-            "defects": 68, "rate": "0.81%"
-        },
-        {
-            "id": "RPT-2417", "t": "Solder Bridge Incident Investigation", "d": "May 10",
-            "risk": "high", "op": "E. Marlow", "st": "signed",
-            "summary": "Class-A solder bridge spike triggered automated line pause. Root cause: solder paste viscosity degradation.",
-            "details": "All affected boards routed to rework station. Paste dispensing nozzle cleaned and recalibrated.",
-            "defects": 19, "rate": "4.20%"
-        },
-        {
-            "id": "RPT-2416", "t": "Quarterly Model Fleet Performance", "d": "Q1 2026",
-            "risk": "low", "op": "MLOps Engine", "st": "signed",
-            "summary": "All 9 active PatchCore models operating within 99.1% Recall@1 SLA. Distribution drift remained below KL 0.08 threshold.",
-            "details": "Automated active learning injected 14,200 verified normal feature vectors into coreset memory banks.",
-            "defects": 312, "rate": "0.24%"
-        },
-        {
-            "id": "RPT-2415", "t": "Weld Joint Failure Audit", "d": "May 7",
-            "risk": "high", "op": "S. Vora", "st": "signed",
-            "summary": "Incomplete weld penetration detected on chassis sub-assembly. Shielding gas flow rate fluctuations identified.",
-            "details": "Gas manifold pressure regulator replaced. Re-inspected 450 units with zero subsequent anomalies.",
-            "defects": 14, "rate": "3.11%"
-        },
-    ]
-    return {"reports": reports}
+    return {"reports": REPORTS_LIST}
+
 
 @app.get("/api/datasets")
 def get_datasets_info():
@@ -362,12 +364,6 @@ async def run_inference_api(
     report_text = spec_analyzer.analyze_with_spec(image, category, anomaly_score, verdict_str)
 
     defects = []
-    if is_anomaly:
-        defects.append({
-            "label": f"high_anomaly_region",
-            "score": float(anomaly_score),
-            "box_2d": [30, 30, 70, 70]
-        })
 
     metrics = {
         "memoryBankSize": pc.memory_bank.shape[0] if pc.memory_bank is not None else 14238,
@@ -400,6 +396,66 @@ async def run_inference_api(
         "aiMode": aiMode,
         "specReport": report_text,
     }
+
+@app.post("/api/analyze-spec")
+async def analyze_spec_api(
+    file: UploadFile = File(...),
+    category: str = Form(...),
+    score: Optional[float] = Form(0.0),
+    verdict: Optional[str] = Form("NORMAL"),
+):
+    contents = await file.read()
+    image = Image.open(io.BytesIO(contents)).convert("RGB")
+    report = spec_analyzer.analyze_with_spec(image, category, score, verdict)
+    return {"specReport": report}
+
+@app.post("/api/generate-report")
+async def generate_report_api(
+    category: str = Form(...),
+    score: float = Form(0.0),
+    verdict: str = Form("NORMAL"),
+    reportText: str = Form(""),
+):
+    import datetime
+    rpt_id = f"RPT-{datetime.datetime.now().strftime('%H%M%S')}"
+    is_defective = "DEFECTIVE" in verdict.upper() or score > 0.50
+    risk = "high" if is_defective else "low"
+    
+    # Consistent summary extraction
+    lines = [l.strip() for l in reportText.splitlines() if l.strip()]
+    summary_text = lines[0] if lines else f"Automated PatchCore quality audit verified component compliance."
+    if len(summary_text) > 120:
+        summary_text = summary_text[:117] + "..."
+    
+    detailed_notes = (
+        f"Component Category: {category.upper()}\n"
+        f"Inspection Timestamp: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
+        f"PatchCore Anomaly Distance: {score:.4f}\n"
+        f"Inference Verdict: {verdict}\n\n"
+        f"--- Vision LLM Specification Audit ---\n"
+        f"{reportText if reportText else 'All visual characteristics match manufacturer datasheet specifications within nominal tolerances.'}"
+    )
+    
+    new_rpt = {
+        "id": rpt_id,
+        "t": f"{category.upper()} · Automated Quality Audit",
+        "d": datetime.date.today().strftime("%b %d, %Y"),
+        "risk": risk,
+        "op": "E. Marlow (AI Assisted)",
+        "st": "signed",
+        "summary": summary_text,
+        "details": detailed_notes,
+        "defects": 1 if is_defective else 0,
+        "rate": f"{(score*100):.1f}%"
+    }
+    REPORTS_LIST.insert(0, new_rpt)
+    return {"status": "success", "report": new_rpt}
+
+@app.delete("/api/reports/{report_id}")
+def delete_report_api(report_id: str):
+    global REPORTS_LIST
+    REPORTS_LIST = [r for r in REPORTS_LIST if r["id"] != report_id]
+    return {"status": "success"}
 
 if __name__ == "__main__":
     import uvicorn
