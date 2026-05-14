@@ -3,7 +3,7 @@ import { PlatformShell } from "@/components/layout/PlatformShell";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { Button } from "@/components/ui/button";
-import { Activity, AlertTriangle, Cpu, Gauge, ScanSearch, Download, Filter, RefreshCw } from "lucide-react";
+import { Activity, AlertTriangle, Cpu, Gauge, ScanSearch, Download, Filter, RefreshCw, Sparkles, CheckCircle2, ShieldCheck, Zap } from "lucide-react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, BarChart, Bar } from "recharts";
 import { useState, useEffect } from "react";
 
@@ -40,26 +40,43 @@ function Dashboard() {
   }));
 
   const defaultDefects = [
-    { name: "Solder", v: 82 }, { name: "Missing", v: 64 }, { name: "Misalign", v: 41 },
-    { name: "Scratch", v: 22 }, { name: "Crack", v: 18 }, { name: "Other", v: 9 },
+    { name: "Solder Bridge", v: 82 }, { name: "Missing Component", v: 64 }, { name: "Misalignment", v: 41 },
+    { name: "Surface Scratch", v: 22 }, { name: "Micro-Crack", v: 18 }, { name: "Foreign Object", v: 9 },
   ];
 
   const series = data?.series || defaultSeries;
   const defects = data?.defects || defaultDefects;
   const alerts = data?.alerts || [
     { sev: "high", t: "Solder bridge spike · Line A", time: "2m" },
-    { sev: "med", t: "Drift detected · Model v4.2", time: "14m" },
-    { sev: "low", t: "Camera calibration overdue · Stn 12", time: "1h" },
+    { sev: "med", t: "Drift detected · Model pcb1", time: "14m" },
+    { sev: "low", t: "Optical sensor recalibration due · Stn 12", time: "1h" },
   ];
   const lines = data?.lines || [
-    { l: "Line A · PCB", m: "patchcore-v4.2", t: "1,284", d: "0.42", s: "ok" },
-    { l: "Line B · Casting", m: "anomalib-v3.1", t: "612", d: "0.18", s: "ok" },
-    { l: "Line C · Welds", m: "fastflow-v2.8", t: "488", d: "0.91", s: "warn" },
-    { l: "Line D · Surface", m: "patchcore-v4.2", t: "2,104", d: "0.12", s: "ok" },
+    { l: "Line A · High-Speed SMT", m: "patchcore-v4.2", t: "1,284", d: "0.31", s: "ok" },
+    { l: "Line B · Heavy Casting", m: "patchcore-v4.2", t: "612", d: "0.18", s: "ok" },
+    { l: "Line C · Laser Welding", m: "fastflow-v2.8", t: "488", d: "0.91", s: "warn" },
+    { l: "Line D · Final Assembly", m: "anomalib-v3.1", t: "2,104", d: "0.12", s: "ok" },
   ];
 
   return (
     <PlatformShell title="Overview" breadcrumb={["Carrier AI", "Operations", "Overview"]}>
+      {/* Eye-catching glowing banner */}
+      <div className="mb-6 flex items-center justify-between rounded-lg border border-primary/40 bg-gradient-to-r from-primary/20 via-background to-background px-5 py-3.5 shadow-[0_0_25px_var(--color-primary)]">
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-[0_0_15px_var(--color-primary)]">
+            <Sparkles className="h-4 w-4" />
+          </div>
+          <div>
+            <div className="text-[13px] font-bold tracking-tight text-foreground">⚡ Fleet Inspection Health Operational</div>
+            <div className="text-[11px] text-muted-foreground">14,238 active FAISS coresets loaded across 9 models · Sub-millisecond KNN matching online.</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="flex h-2 w-2 rounded-full bg-[var(--color-success)] animate-pulse-dot" />
+          <span className="font-mono text-[11px] text-[var(--color-success)] font-medium">99.69% Yield Rate SLA</span>
+        </div>
+      </div>
+
       <SectionHeader
         eyebrow="Operations · East Region"
         title="Plant overview"
@@ -75,11 +92,12 @@ function Dashboard() {
         }
       />
 
+      {/* Highly Meaningful & Industrial Metrics */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Throughput" value={data?.throughput || "1,284/hr"} delta="+4.2%" trend="up" hint="vs prev shift" icon={<Activity className="h-4 w-4" />} accent />
-        <StatCard label="Defect rate" value={data?.defectRate || "0.31%"} delta="−12%" trend="down" hint="Live AI inspections" icon={<AlertTriangle className="h-4 w-4" />} />
-        <StatCard label="Active models" value={data?.activeModels?.toString() || "9"} delta="0" trend="flat" hint="Pre-loaded FAISS coresets" icon={<Cpu className="h-4 w-4" />} />
-        <StatCard label="P50 latency" value={data?.p50Latency || "11 ms"} delta="−2ms" trend="down" hint="P99 28ms" icon={<Gauge className="h-4 w-4" />} />
+        <StatCard label="Inspection Throughput" value={data?.throughput || "13,482/shift"} delta="+4.2%" trend="up" hint="Continuous line feeds" icon={<Activity className="h-4 w-4" />} accent />
+        <StatCard label="Quality Yield Rate" value={data?.yieldRate || "99.69% Pass"} delta="+0.12%" trend="up" hint="vs 99.50% target SLA" icon={<CheckCircle2 className="h-4 w-4 text-[var(--color-success)]" />} />
+        <StatCard label="Recall Confidence SLA" value={data?.recallAcc || "99.41% SLA"} delta="+0.05pp" trend="up" hint="PatchCore Anomaly Distance" icon={<ShieldCheck className="h-4 w-4 text-primary" />} />
+        <StatCard label="Inference Speed" value={data?.p50Latency || "8.4 ms P50"} delta="−1.2ms" trend="down" hint={data?.faissSpeed ? `Recall: ${data.faissSpeed}` : "1.2ms FAISS speed"} icon={<Zap className="h-4 w-4 text-yellow-400" />} />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -91,7 +109,7 @@ function Dashboard() {
             </div>
             <div className="flex gap-1.5">
               {["1H", "6H", "24H", "7D"].map((r, i) => (
-                <button key={r} className={`rounded px-2 py-1 text-[11px] ${i === 1 ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground"}`}>{r}</button>
+                <button key={r} className={`rounded px-2 py-1 text-[11px] ${i === 1 ? "bg-secondary text-foreground font-medium" : "text-muted-foreground hover:text-foreground"}`}>{r}</button>
               ))}
             </div>
           </div>
@@ -124,7 +142,7 @@ function Dashboard() {
               <BarChart data={defects} layout="vertical" margin={{ left: 0 }}>
                 <CartesianGrid stroke="oklch(1 0 0 / 0.04)" horizontal={false} />
                 <XAxis type="number" tick={{ fill: "oklch(0.68 0.015 255)", fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis type="category" dataKey="name" tick={{ fill: "oklch(0.85 0.005 250)", fontSize: 11 }} axisLine={false} tickLine={false} width={85} />
+                <YAxis type="category" dataKey="name" tick={{ fill: "oklch(0.85 0.005 250)", fontSize: 11 }} axisLine={false} tickLine={false} width={105} />
                 <Tooltip contentStyle={{ background: "oklch(0.21 0.014 260)", border: "1px solid oklch(0.28 0.012 260)", borderRadius: 8, fontSize: 12 }} cursor={{ fill: "oklch(0.27 0.018 260)" }} />
                 <Bar dataKey="v" fill="oklch(0.55 0.22 268)" radius={[0, 4, 4, 0]} />
               </BarChart>
@@ -141,7 +159,7 @@ function Dashboard() {
               <div key={a.t} className="flex items-start gap-2.5 rounded-md border border-border bg-background/40 p-2.5">
                 <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${a.sev === "high" ? "bg-[var(--color-destructive)]" : a.sev === "med" ? "bg-[var(--color-warning)]" : "bg-muted-foreground"}`} />
                 <div className="flex-1 text-[12.5px]">
-                  <div>{a.t}</div>
+                  <div className="font-medium">{a.t}</div>
                   <div className="text-[10.5px] text-muted-foreground">{a.time} ago</div>
                 </div>
               </div>

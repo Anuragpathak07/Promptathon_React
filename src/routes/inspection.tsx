@@ -9,17 +9,32 @@ export const Route = createFileRoute("/inspection")({
   component: Inspection,
 });
 
+// Module-level global cache so state survives React component unmounts across route navigations!
+let globalInspectionState: {
+  selectedCat: string;
+  imageFile: File | null;
+  imagePreview: string | null;
+  result: any | null;
+  aiReportText: string | null;
+} = {
+  selectedCat: "pcb1",
+  imageFile: null,
+  imagePreview: null,
+  result: null,
+  aiReportText: null,
+};
+
 function Inspection() {
   const [modelsList, setModelsList] = useState<any[]>([]);
-  const [selectedCat, setSelectedCat] = useState<string>("pcb1");
+  const [selectedCat, setSelectedCat] = useState<string>(globalInspectionState.selectedCat);
   const [showHeatmap, setShowHeatmap] = useState(true);
 
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(globalInspectionState.imageFile);
+  const [imagePreview, setImagePreview] = useState<string | null>(globalInspectionState.imagePreview);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<any>(globalInspectionState.result);
 
-  const [aiReportText, setAiReportText] = useState<string | null>(null);
+  const [aiReportText, setAiReportText] = useState<string | null>(globalInspectionState.aiReportText);
   const [aiLoading, setAiLoading] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
   const [reportSaved, setReportSaved] = useState(false);
@@ -33,21 +48,67 @@ function Inspection() {
       .then((data) => {
         if (data.models && data.models.length > 0) {
           setModelsList(data.models);
-          setSelectedCat(data.models[0].n);
+          if (!globalInspectionState.imagePreview) {
+            setSelectedCat(data.models[0].n);
+            globalInspectionState.selectedCat = data.models[0].n;
+          }
         }
       })
       .catch((err) => console.error("Failed to fetch models", err));
+
+    // Restore from localStorage in case of hard browser refresh
+    const savedPreview = localStorage.getItem("carrier_ins_preview");
+    const savedCat = localStorage.getItem("carrier_ins_cat");
+    const savedResult = localStorage.getItem("carrier_ins_result");
+    const savedReport = localStorage.getItem("carrier_ins_report");
+
+    if (!globalInspectionState.imagePreview && savedPreview) {
+      setImagePreview(savedPreview);
+      globalInspectionState.imagePreview = savedPreview;
+    }
+    if (!globalInspectionState.selectedCat && savedCat) {
+      setSelectedCat(savedCat);
+      globalInspectionState.selectedCat = savedCat;
+    }
+    if (!globalInspectionState.result && savedResult) {
+      try {
+        const parsed = JSON.parse(savedResult);
+        setResult(parsed);
+        globalInspectionState.result = parsed;
+      } catch (e) {}
+    }
+    if (!globalInspectionState.aiReportText && savedReport) {
+      setAiReportText(savedReport);
+      globalInspectionState.aiReportText = savedReport;
+    }
   }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setImageFile(file);
-      const url = URL.createObjectURL(file);
-      setImagePreview(url);
-      setResult(null); // Clear previous result when new image is uploaded
-      setAiReportText(null);
-      setReportSaved(false);
+      globalInspectionState.imageFile = file;
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64Url = reader.result as string;
+        setImagePreview(base64Url);
+        setResult(null);
+        setAiReportText(null);
+        setReportSaved(false);
+
+        globalInspectionState.imagePreview = base64Url;
+        globalInspectionState.result = null;
+        globalInspectionState.aiReportText = null;
+
+        try {
+          localStorage.setItem("carrier_ins_preview", base64Url);
+          localStorage.setItem("carrier_ins_cat", selectedCat);
+          localStorage.removeItem("carrier_ins_result");
+          localStorage.removeItem("carrier_ins_report");
+        } catch (err) { console.error("localStorage full", err); }
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -58,13 +119,44 @@ function Inspection() {
     setResult(null);
     setAiReportText(null);
     setReportSaved(false);
+
+    globalInspectionState.imageFile = null;
+    globalInspectionState.imagePreview = null;
+    globalInspectionState.result = null;
+    globalInspectionState.aiReportText = null;
+
+    try {
+      localStorage.removeItem("carrier_ins_preview");
+      localStorage.removeItem("carrier_ins_result");
+      localStorage.removeItem("carrier_ins_report");
+    } catch (err) {}
+
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   };
 
+  // Reconstruct File from base64 if reloaded from localStorage
+  const getActiveFile = async () => {
+    if (imageFile) return imageFile;
+    if (globalInspectionState.imageFile) return globalInspectionState.imageFile;
+    if (!imagePreview) return null;
+
+    try {
+      const res = await fetch(imagePreview);
+      const blob = await res.blob();
+      const newFile = new File([blob], "uploaded_component.jpg", { type: blob.type });
+      setImageFile(newFile);
+      globalInspectionState.imageFile = newFile;
+      return newFile;
+    } catch (e) {
+      return null;
+    }
+  };
+
   const runInference = async () => {
-    if (!imageFile) {
+    const fileToUse = await getActiveFile();
+    if (!fileToUse) {
       alert("Please upload an image first.");
       return;
     }
@@ -72,8 +164,9 @@ function Inspection() {
     setLoading(true);
     setAiReportText(null);
     setReportSaved(false);
+
     const formData = new FormData();
-    formData.append("file", imageFile);
+    formData.append("file", fileToUse);
     formData.append("category", selectedCat);
 
     try {
@@ -83,8 +176,16 @@ function Inspection() {
       });
       const data = await res.json();
       setResult(data);
+      globalInspectionState.result = data;
+
+      try {
+        localStorage.setItem("carrier_ins_result", JSON.stringify(data));
+      } catch (err) {}
+
       if (data.specReport) {
         setAiReportText(data.specReport);
+        globalInspectionState.aiReportText = data.specReport;
+        try { localStorage.setItem("carrier_ins_report", data.specReport); } catch (e) {}
       }
     } catch (err) {
       console.error("Inference failed", err);
@@ -95,14 +196,15 @@ function Inspection() {
   };
 
   const runAiAnalysis = async () => {
-    if (!imageFile) {
+    const fileToUse = await getActiveFile();
+    if (!fileToUse) {
       alert("Please upload an image first.");
       return;
     }
 
     setAiLoading(true);
     const formData = new FormData();
-    formData.append("file", imageFile);
+    formData.append("file", fileToUse);
     formData.append("category", selectedCat);
     formData.append("score", result?.anomalyScore ? result.anomalyScore.toString() : "0.94");
     formData.append("verdict", result?.isAnomaly ? "ANOMALY (DEFECTIVE)" : "NORMAL");
@@ -115,6 +217,8 @@ function Inspection() {
       const data = await res.json();
       if (data.specReport) {
         setAiReportText(data.specReport);
+        globalInspectionState.aiReportText = data.specReport;
+        try { localStorage.setItem("carrier_ins_report", data.specReport); } catch (e) {}
       }
     } catch (err) {
       console.error("AI Spec Analysis failed", err);
@@ -184,11 +288,11 @@ function Inspection() {
               >
                 <Upload className="h-5 w-5 text-muted-foreground" />
                 <div className="text-[12px] font-medium truncate max-w-[180px]">
-                  {imageFile ? imageFile.name : "Upload image"}
+                  {imageFile ? imageFile.name : (imagePreview ? "uploaded_component.jpg" : "Upload image")}
                 </div>
                 <div className="text-[10.5px] text-muted-foreground">PNG · JPG · TIFF · max 64MB</div>
               </button>
-              {imageFile && (
+              {imagePreview && (
                 <button 
                   onClick={clearImage}
                   title="Remove image"
@@ -203,8 +307,10 @@ function Inspection() {
               <select 
                 value={selectedCat} 
                 onChange={(e) => {
-                  setSelectedCat(e.target.value);
-                  // Output perfectly persists! No setResult(null) or setAiReportText(null) here.
+                  const val = e.target.value;
+                  setSelectedCat(val);
+                  globalInspectionState.selectedCat = val;
+                  try { localStorage.setItem("carrier_ins_cat", val); } catch (err) {}
                 }} 
                 className="w-full rounded-md border border-border bg-background/60 px-2.5 py-1.5 text-[12px]"
               >
@@ -231,7 +337,7 @@ function Inspection() {
               </select>
             </Field>
 
-            <Button onClick={runInference} disabled={loading || !imageFile} className="w-full">
+            <Button onClick={runInference} disabled={loading || !imagePreview} className="w-full">
               <Play className={`mr-1.5 h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
               {loading ? "Running AI..." : "Run inference"}
             </Button>
@@ -260,7 +366,7 @@ function Inspection() {
           <div className="rounded-lg border border-border bg-card overflow-hidden">
             <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
               <div className="flex items-center gap-2 text-[12px]">
-                <span className="font-medium">{imageFile ? imageFile.name : "PCB-X4-00482.tif"}</span>
+                <span className="font-medium">{imageFile ? imageFile.name : (imagePreview ? "uploaded_component.jpg" : "PCB-X4-00482.tif")}</span>
                 <span className="text-muted-foreground">· 2048 × 1536 · 24-bit</span>
               </div>
               <div className="flex items-center gap-1.5">
@@ -359,7 +465,7 @@ function Inspection() {
             </div>
             <Button 
               onClick={runAiAnalysis} 
-              disabled={aiLoading || !imageFile} 
+              disabled={aiLoading || !imagePreview} 
               className="mt-3 w-full bg-primary hover:bg-primary/90 text-primary-foreground text-[11.5px] font-medium"
             >
               <Sparkles className={`mr-1.5 h-3.5 w-3.5 ${aiLoading ? "animate-spin" : ""}`} />
@@ -368,7 +474,7 @@ function Inspection() {
             
             <Button 
               onClick={saveReport} 
-              disabled={saveLoading || reportSaved} 
+              disabled={saveLoading || reportSaved || !result} 
               variant="outline" 
               className={`mt-2 w-full text-[11.5px] ${reportSaved ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400" : "bg-secondary/40 hover:bg-secondary/60"}`}
             >

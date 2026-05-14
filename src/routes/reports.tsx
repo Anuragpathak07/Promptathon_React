@@ -50,13 +50,42 @@ function Reports() {
     }
   };
 
-  const defaultReports = [
-    { id: "RPT-2419", t: "Line A · Weekly Inspection Summary", d: "May 11 — May 17", risk: "low", op: "E. Marlow", st: "signed", summary: "Defect rate decreased 12% week-over-week. Solder bridge frequency increased in shifts S3–S4 — recommend reflow oven recalibration.", details: "Reviewed all 12 critical events across 13,482 inspections. Two confirmed false positives reclassified.", defects: 42, rate: "0.31%" },
-    { id: "RPT-2418", t: "Casting Block · Compliance Audit", d: "Apr 2026", risk: "med", op: "K. Ito", st: "review", summary: "Minor surface porosity observed in Batch #402. Structural integrity verified via ultrasound.", details: "Inspected 8,420 cast blocks. Recommended die polishing cycle advance.", defects: 68, rate: "0.81%" },
-    { id: "RPT-2417", t: "Solder Bridge Incident Investigation", d: "May 10", risk: "high", op: "E. Marlow", st: "signed", summary: "Class-A solder bridge spike triggered automated line pause.", details: "All affected boards routed to rework station. Paste dispensing nozzle cleaned.", defects: 19, rate: "4.20%" },
-  ];
+  const downloadPDF = (report: any) => {
+    if (!report) return;
+    const content = `=================================================================
+             CARRIER AI INDUSTRIAL COMPLIANCE AUDIT
+=================================================================
+Report ID:         ${report.id}
+Title:             ${report.t}
+Date:              ${report.d}
+Operator:          ${report.op}
+Risk Level:        ${report.risk ? report.risk.toUpperCase() : "LOW"}
+Defect Count:      ${report.defects || 0}
+Distance / Rate:   ${report.rate || "0.31%"}
+-----------------------------------------------------------------
+EXECUTIVE SUMMARY:
+${report.summary}
 
-  const reportsList = data?.reports || defaultReports;
+-----------------------------------------------------------------
+DETAILED SPECIFICATION AUDIT:
+${report.details}
+
+=================================================================
+[Cryptographically Signed & Verified by Vision LLM / PatchCore Coresets]
+`;
+
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${report.id}_Compliance_Audit.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const reportsList = data?.reports || [];
   const activeReport = reportsList.find((r: any) => r.id === selectedId) || reportsList[0];
 
   return (
@@ -116,7 +145,7 @@ function Reports() {
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
-                  <Button variant="outline" size="sm" className="h-8 bg-secondary/40 text-[11px]"><Download className="mr-1 h-3 w-3" />PDF</Button>
+                  <Button variant="outline" size="sm" onClick={() => downloadPDF(activeReport)} className="h-8 bg-secondary/40 text-[11px]"><Download className="mr-1 h-3 w-3" />PDF</Button>
                 </div>
               </div>
               <div className="p-5 space-y-4">

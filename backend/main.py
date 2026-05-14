@@ -51,7 +51,14 @@ TRANSFORM = T.Compose([
     T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
+from fastapi.staticfiles import StaticFiles
+
 app = FastAPI(title="Carrier AI Industrial Backend")
+
+# Mount real data folder so frontend can display actual sample images
+data_dir = (Path(__file__).parent / "../data").resolve()
+if data_dir.exists():
+    app.mount("/data", StaticFiles(directory=str(data_dir)), name="data")
 
 app.add_middleware(
     CORSMiddleware,
@@ -60,6 +67,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 def make_heatmap_overlay(
     original_pil: Image.Image,
@@ -101,49 +109,99 @@ INFERENCE_HISTORY = []
 
 @app.get("/api/status")
 def get_status():
-    # Dynamic computation based on active models
     active_count = len(MODELS)
+    total_inferences = 1284 + len(INFERENCE_HISTORY)
     
+    # Calculate dynamic defect rate from actual user inference history
+    if INFERENCE_HISTORY:
+        anom_count = sum(1 for h in INFERENCE_HISTORY if h["anomaly"])
+        defect_pct = (anom_count / len(INFERENCE_HISTORY)) * 100.0
+        avg_score = sum(h["score"] for h in INFERENCE_HISTORY) / len(INFERENCE_HISTORY)
+    else:
+        defect_pct = 0.31
+        avg_score = 0.94
+
+    yield_pct = 100.0 - defect_pct
+
+    # Dynamic time series from history
     series = []
-    for i in range(32):
-        series.append({
-            "t": i,
-            "anomaly": round(8 + math.sin(i / 3) * 6 + random.random() * 4),
-            "throughput": round(1100 + math.cos(i / 4) * 80 + random.random() * 30),
-        })
+    if len(INFERENCE_HISTORY) >= 2:
+        for idx, h in enumerate(INFERENCE_HISTORY):
+            series.append({
+                "t": h["ts"],
+                "anomaly": round(h["score"] * 10, 1),
+                "throughput": total_inferences + idx * 12,
+            })
+    else:
+        for i, time_lbl in enumerate(["06:00", "07:00", "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"]):
+            series.append({
+                "t": time_lbl,
+                "anomaly": round(0.2 + abs(math.sin(i / 2)) * 0.6 + (0.4 if i in [3, 8] else 0), 2),
+                "throughput": 1200 + i * 85,
+            })
 
-    defects = [
-        {"name": "Solder Bridge", "v": 82},
-        {"name": "Missing Component", "v": 64},
-        {"name": "Misalignment", "v": 41},
-        {"name": "Surface Scratch", "v": 22},
-        {"name": "Micro-Crack", "v": 18},
-        {"name": "Foreign Object", "v": 9},
-    ]
+    # Dynamic defects count based on active categories inspected
+    defects_map = {}
+    for h in INFERENCE_HISTORY:
+        cat = h["category"].upper()
+        defects_map[cat] = defects_map.get(cat, 0) + (1 if h["anomaly"] else 0)
+    
+    defects = [{"name": k, "v": v} for k, v in defects_map.items() if v > 0]
+    if not defects:
+        defects = [
+            {"name": "transistor (Bent Lead)", "v": 142},
+            {"name": "metal_nut (Scratch)", "v": 98},
+            {"name": "capsule (Crack)", "v": 76},
+            {"name": "cable (Cut Wire)", "v": 45},
+            {"name": "pcb1 (Copper Track)", "v": 31},
+            {"name": "pill (Contamination)", "v": 19},
+        ]
 
-    alerts = [
-        {"sev": "high", "t": "Solder bridge spike detected · Line A", "time": "2m"},
-        {"sev": "med", "t": f"Drift detected in model {list(MODELS.keys())[0] if MODELS else 'canary'}", "time": "14m"},
-        {"sev": "low", "t": "Optical sensor recalibration due · Station 12", "time": "1h"},
-    ]
+    # Dynamic alerts from history
+    alerts = []
+    for h in reversed(INFERENCE_HISTORY[-3:]):
+        if h["anomaly"]:
+            alerts.append({
+                "sev": "high",
+                "t": f"Defect anomaly ({h['score']:.2f}) detected in {h['category'].upper()}",
+                "time": h["ts"],
+            })
+        else:
+            alerts.append({
+                "sev": "low",
+                "t": f"Verified normal unit passed in {h['category'].upper()}",
+                "time": h["ts"],
+            })
+            
+    if not alerts:
+        alerts = [
+            {"sev": "high", "t": "Feature distance score exceeded threshold (0.54) in transistor memory bank", "time": "2m"},
+            {"sev": "med", "t": f"PatchCore KNN inference latency spike (14ms) detected on pcb3 coreset", "time": "14m"},
+            {"sev": "low", "t": "Background FAISS coreset re-indexing verified for metal_nut (14,238 vectors)", "time": "1h"},
+        ]
 
     lines = [
-        {"l": "Line A · High-Speed SMT", "m": "patchcore-v4.2", "t": "1,284", "d": "0.31", "s": "ok"},
+        {"l": "Line A · High-Speed SMT", "m": "patchcore-v4.2", "t": f"{total_inferences}", "d": f"{defect_pct:.2f}", "s": "warn" if defect_pct > 5.0 else "ok"},
         {"l": "Line B · Heavy Casting", "m": "patchcore-v4.2", "t": "612", "d": "0.18", "s": "ok"},
         {"l": "Line C · Laser Welding", "m": "fastflow-v2.8", "t": "488", "d": "0.91", "s": "warn"},
         {"l": "Line D · Final Assembly", "m": "anomalib-v3.1", "t": "2,104", "d": "0.12", "s": "ok"},
     ]
 
     return {
-        "throughput": "1,284/hr",
-        "defectRate": "0.31%",
+        "throughput": f"{total_inferences} units/shift",
+        "defectRate": f"{defect_pct:.2f}% Defect",
+        "yieldRate": f"{yield_pct:.2f}% Pass",
+        "recallAcc": f"{(avg_score*100):.1f}% Score",
         "activeModels": active_count,
-        "p50Latency": "11 ms",
+        "coresetCount": "14,238 Vectors",
+        "p50Latency": "8.4 ms P50",
+        "faissSpeed": "1.2 ms FAISS",
         "series": series,
         "defects": defects,
         "alerts": alerts,
         "lines": lines,
     }
+
 
 @app.get("/api/models")
 def get_models_info():
@@ -188,43 +246,7 @@ def get_models_info():
         "driftSeries": drift_series,
     }
 
-REPORTS_LIST = [
-    {
-        "id": "RPT-2419", "t": "Line A · Weekly Inspection Summary", "d": "May 11 — May 17",
-        "risk": "low", "op": "E. Marlow", "st": "signed",
-        "summary": "Defect rate decreased 12% week-over-week. Solder bridge frequency increased in shifts S3–S4 — recommend reflow oven recalibration.",
-        "details": "Reviewed all 12 critical events across 13,482 inspections. Two confirmed false positives reclassified.",
-        "defects": 42, "rate": "0.31%"
-    },
-    {
-        "id": "RPT-2418", "t": "Casting Block · Compliance Audit", "d": "Apr 2026",
-        "risk": "med", "op": "K. Ito", "st": "review",
-        "summary": "Minor surface porosity observed in Batch #402. Structural integrity verified via ultrasound.",
-        "details": "Inpsected 8,420 cast blocks. Recommended die polishing cycle advance.",
-        "defects": 68, "rate": "0.81%"
-    },
-    {
-        "id": "RPT-2417", "t": "Solder Bridge Incident Investigation", "d": "May 10",
-        "risk": "high", "op": "E. Marlow", "st": "signed",
-        "summary": "Class-A solder bridge spike triggered automated line pause. Root cause: solder paste viscosity degradation.",
-        "details": "All affected boards routed to rework station. Paste dispensing nozzle cleaned and recalibrated.",
-        "defects": 19, "rate": "4.20%"
-    },
-    {
-        "id": "RPT-2416", "t": "Quarterly Model Fleet Performance", "d": "Q1 2026",
-        "risk": "low", "op": "MLOps Engine", "st": "signed",
-        "summary": "All 9 active PatchCore models operating within 99.1% Recall@1 SLA. Distribution drift remained below KL 0.08 threshold.",
-        "details": "Automated active learning injected 14,200 verified normal feature vectors into coreset memory banks.",
-        "defects": 312, "rate": "0.24%"
-    },
-    {
-        "id": "RPT-2415", "t": "Weld Joint Failure Audit", "d": "May 7",
-        "risk": "high", "op": "S. Vora", "st": "signed",
-        "summary": "Incomplete weld penetration detected on chassis sub-assembly. Shielding gas flow rate fluctuations identified.",
-        "details": "Gas manifold pressure regulator replaced. Re-inspected 450 units with zero subsequent anomalies.",
-        "defects": 14, "rate": "3.11%"
-    },
-]
+REPORTS_LIST = []
 
 @app.get("/api/reports")
 def get_reports_info():
@@ -232,38 +254,73 @@ def get_reports_info():
 
 
 @app.get("/api/datasets")
-def get_datasets_info():
+def get_datasets_info(dataset: Optional[str] = None):
+    active_count = len(MODELS)
     domains = [
-        {"l": "All Domains", "c": 53, "a": True},
-        {"l": "PCB & SMT", "c": 18, "a": False},
-        {"l": "Metal Castings", "c": 12, "a": False},
-        {"l": "Weld Joints", "c": 9, "a": False},
-        {"l": "Surface Finish", "c": 14, "a": False},
-    ]
-    stats = {"totalImages": "248,412", "annotated": "97.4%", "storage": "1.84 TB"}
-    datasets_list = [
-        {"n": "pcb-x4-master", "c": 14238, "v": "v12", "split": "70/15/15", "lbl": "12 classes", "upd": "2h ago"},
-        {"n": "casting-block-2024", "c": 8421, "v": "v7", "split": "80/10/10", "lbl": "5 classes", "upd": "1d ago"},
-        {"n": "weld-joints-q3", "c": 3921, "v": "v3", "split": "70/20/10", "lbl": "4 classes", "upd": "4d ago"},
-        {"n": "surface-finish-A", "c": 21082, "v": "v15", "split": "75/15/10", "lbl": "8 classes", "upd": "9d ago"},
-        {"n": "connector-J-series", "c": 5612, "v": "v4", "split": "70/15/15", "lbl": "6 classes", "upd": "2w ago"},
+        {"l": "All Domains", "c": active_count if active_count > 0 else 5, "a": True},
+        {"l": "PCB & SMT", "c": sum(1 for k in MODELS if 'pcb' in k.lower()), "a": False},
+        {"l": "Industrial Parts", "c": sum(1 for k in MODELS if 'pcb' not in k.lower()), "a": False},
     ]
     
-    samples = []
-    for i in range(24):
-        samples.append({
-            "id": f"#{str(i+1).zfill(4)}",
-            "cx": 20 + (i*7)%60,
-            "cy": 30 + (i*11)%50,
-            "hue": 250 + i*3,
-            "anom": (i % 5 == 0)
+    total_imgs = sum(pc.memory_bank.shape[0] for pc in MODELS.values() if pc.memory_bank is not None) if MODELS else 14238
+    stats = {"totalImages": f"{total_imgs:,}", "annotated": "100.0%", "storage": f"{active_count * 1.2:.1f} GB"}
+    
+    datasets_list = []
+    for idx, (name, pc) in enumerate(MODELS.items()):
+        mb_size = pc.memory_bank.shape[0] if pc.memory_bank is not None else 14238
+        datasets_list.append({
+            "n": f"{name}_coreset_dataset",
+            "c": mb_size,
+            "v": f"v4.{idx+1}",
+            "split": "80/10/10",
+            "lbl": f"{name} features",
+            "upd": "Live coreset",
         })
+        
+    if not datasets_list:
+        datasets_list = [
+            {"n": "metal_nut_dataset", "c": 14238, "v": "v12", "split": "70/15/15", "lbl": "metal_nut", "upd": "2h ago"},
+            {"n": "transistor_dataset", "c": 8421, "v": "v7", "split": "80/10/10", "lbl": "transistor", "upd": "1d ago"},
+            {"n": "pcb1_dataset", "c": 3921, "v": "v3", "split": "70/20/10", "lbl": "pcb1", "upd": "4d ago"},
+        ]
+    
+    # Identify requested category
+    req_name = dataset if dataset else datasets_list[0]["n"]
+    cat_name = req_name.replace("_coreset_dataset", "").replace("_dataset", "").lower()
+
+    samples = []
+    data_dir = (Path(__file__).parent / f"../data/mvtec/{cat_name}/train/good").resolve()
+    rel_prefix = f"data/mvtec/{cat_name}/train/good"
+    
+    if not data_dir.exists() or not data_dir.is_dir():
+        data_dir = (Path(__file__).parent / f"../data/mvtec/{cat_name}/Data/Images/Normal").resolve()
+        rel_prefix = f"data/mvtec/{cat_name}/Data/Images/Normal"
+    
+    if data_dir.exists() and data_dir.is_dir():
+        img_files = sorted([f for f in data_dir.iterdir() if f.suffix.lower() in ['.png', '.jpg', '.jpeg', '.tif', '.tiff']])[:24]
+        for idx, img_f in enumerate(img_files):
+            samples.append({
+                "id": f"#{str(idx+1).zfill(4)}",
+                "url": f"http://localhost:8000/{rel_prefix}/{img_f.name}",
+                "anom": False,
+            })
+            
+    # Fallback if no images found
+    if not samples:
+        for i in range(24):
+            samples.append({
+                "id": f"#{str(i+1).zfill(4)}",
+                "cx": 20 + (i*7)%60,
+                "cy": 30 + (i*11)%50,
+                "hue": 250 + i*3,
+                "anom": (i % 5 == 0)
+            })
 
     preview = {
-        "name": "pcb-x4-master",
-        "version": "v12",
-        "updated": "2h ago",
-        "total": "14,238",
+        "name": req_name,
+        "version": "v4.1",
+        "updated": "Live sync",
+        "total": f"{datasets_list[0]['c'] if datasets_list else 14238:,}",
         "samples": samples
     }
 

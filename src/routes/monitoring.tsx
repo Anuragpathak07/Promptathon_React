@@ -3,7 +3,7 @@ import { PlatformShell } from "@/components/layout/PlatformShell";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { Button } from "@/components/ui/button";
-import { Cpu, HardDrive, Zap, GitBranch, AlertTriangle, RefreshCw } from "lucide-react";
+import { Cpu, HardDrive, Zap, GitBranch, AlertTriangle, RefreshCw, Activity, ShieldCheck, ArrowRight, Server, Wrench, Layers } from "lucide-react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
 import { useState, useEffect } from "react";
 
@@ -37,10 +37,11 @@ function Monitoring() {
   const defaultDrift = Array.from({ length: 30 }, (_, i) => ({ t: i, v: 0.02 + Math.abs(Math.sin(i / 5)) * 0.05 + Math.random() * 0.01 }));
 
   const defaultModels = [
-    { n: "patchcore-v4.2", v: "v4.2.1", env: "prod", lat: "11ms", req: "1.2k/m", drift: 0.03, status: "healthy" },
-    { n: "fastflow-v2.8", v: "v2.8.3", env: "prod", lat: "18ms", req: "488/m", drift: 0.07, status: "watch" },
-    { n: "anomalib-v3.1", v: "v3.1.0", env: "canary", lat: "14ms", req: "62/m", drift: 0.02, status: "healthy" },
-    { n: "vision-llm-r2", v: "r2.4", env: "prod", lat: "412ms", req: "210/m", drift: 0.04, status: "healthy" },
+    { n: "metal_nut", v: "v4.1", env: "prod", lat: "11ms", req: "1.2k/m", drift: 0.03, status: "healthy" },
+    { n: "transistor", v: "v4.2", env: "prod", lat: "14ms", req: "850/m", drift: 0.02, status: "healthy" },
+    { n: "capsule", v: "v4.3", env: "prod", lat: "12ms", req: "620/m", drift: 0.04, status: "healthy" },
+    { n: "cable", v: "v4.4", env: "prod", lat: "15ms", req: "410/m", drift: 0.03, status: "healthy" },
+    { n: "pcb1", v: "v4.5", env: "prod", lat: "18ms", req: "950/m", drift: 0.05, status: "watch" },
   ];
 
   const latencySeries = data?.latencySeries || defaultLatency;
@@ -60,11 +61,115 @@ function Monitoring() {
         }
       />
 
+      {/* Production Pipeline Placement Banner */}
+      <div className="mb-6 rounded-lg border border-border bg-card p-5 shadow-sm">
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Manufacturing Integration</div>
+            <div className="text-[15px] font-semibold text-foreground">Production Line Testing Phase Placement</div>
+          </div>
+          <span className="rounded-full bg-primary/20 px-3 py-1 text-[11px] font-semibold text-primary border border-primary/30 flex items-center gap-1.5">
+            <Activity className="h-3 w-3" />Active Stage: Optical Testing & Quality Control
+          </span>
+        </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-4 items-center bg-background/50 p-4 rounded-lg border border-border">
+          <div className="flex flex-col p-3 rounded bg-secondary/30 border border-border text-center">
+            <span className="text-[10.5px] uppercase tracking-wider text-muted-foreground">Stage 1</span>
+            <span className="text-[13px] font-bold mt-1 text-foreground">Raw Material Feeds</span>
+            <span className="text-[11px] text-muted-foreground mt-0.5">Component sorting</span>
+          </div>
+          <div className="flex flex-col p-3 rounded bg-secondary/30 border border-border text-center">
+            <span className="text-[10.5px] uppercase tracking-wider text-muted-foreground">Stage 2</span>
+            <span className="text-[13px] font-bold mt-1 text-foreground">Assembly & SMT Mounting</span>
+            <span className="text-[11px] text-muted-foreground mt-0.5">Physical part construction</span>
+          </div>
+          <div className="flex flex-col p-3.5 rounded bg-primary/15 border-2 border-primary shadow-[0_0_15px_rgba(var(--color-primary),0.2)] text-center relative overflow-hidden">
+            <div className="absolute top-0 right-0 bg-primary px-1.5 py-0.5 text-[8px] font-mono font-bold text-primary-foreground uppercase">Active AI</div>
+            <span className="text-[10.5px] uppercase tracking-wider text-primary font-bold">Stage 3 · Testing Phase</span>
+            <span className="text-[13.5px] font-extrabold mt-1 text-foreground">Carrier AI Optical AOI</span>
+            <span className="text-[11px] text-muted-foreground mt-0.5">PatchCore anomaly detection</span>
+          </div>
+          <div className="flex flex-col p-3 rounded bg-secondary/30 border border-border text-center">
+            <span className="text-[10.5px] uppercase tracking-wider text-muted-foreground">Stage 4</span>
+            <span className="text-[13px] font-bold mt-1 text-foreground">Packing & Logistics</span>
+            <span className="text-[11px] text-muted-foreground mt-0.5">Passed unit shipping</span>
+          </div>
+        </div>
+        <div className="mt-3 text-[12px] text-muted-foreground flex items-center gap-2">
+          <ShieldCheck className="h-4 w-4 text-[var(--color-success)] shrink-0" />
+          <span>Every MVTec category part passes through the automated optical testing phase. Defective items are instantly diverted off the line before packaging.</span>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Avg P50 latency" value={data?.avgP50 || "11 ms"} delta="−2ms" trend="down" icon={<Zap className="h-4 w-4" />} accent />
         <StatCard label="GPU utilization" value={data?.gpuUtil || "64%"} delta="+3pp" trend="up" icon={<Cpu className="h-4 w-4" />} />
-        <StatCard label="FAISS index vectors" value={data?.faissIndex || "128,142 vectors"} hint="Pre-loaded PatchCore coresets" icon={<HardDrive className="h-4 w-4" />} />
+        <StatCard label="FAISS index vectors" value={data?.faissIndex || "171,404 vectors"} hint="Pre-loaded PatchCore coresets" icon={<HardDrive className="h-4 w-4" />} />
         <StatCard label="Drift incidents" value={data?.driftIncidents?.toString() || "2"} delta="0" trend="flat" icon={<AlertTriangle className="h-4 w-4" />} />
+      </div>
+
+      {/* Hardware & Performance Requirements Section */}
+      <div className="mt-6 rounded-lg border border-border bg-card p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Infrastructure Specification</div>
+            <div className="text-[15px] font-semibold text-foreground">Hardware & Performance Requirements</div>
+          </div>
+          <Wrench className="h-4 w-4 text-muted-foreground" />
+        </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-md border border-border bg-background/50 p-4">
+            <div className="flex items-center gap-2 text-[13px] font-bold text-foreground">
+              <Cpu className="h-4 w-4 text-primary" />Edge Processing SoC
+            </div>
+            <div className="mt-2 text-[12px] text-muted-foreground">
+              ARM Cortex-A72 / A76 quad-core processor (Raspberry Pi 4B / Pi 5) optimized for ONNX runtime and lightweight quantized backbone extraction.
+            </div>
+            <div className="mt-3 pt-2 border-t border-border flex justify-between text-[11px] font-mono">
+              <span className="text-muted-foreground">Hardware Target:</span>
+              <span className="text-[var(--color-success)] font-bold">Raspberry Pi 4 / 5</span>
+            </div>
+          </div>
+
+          <div className="rounded-md border border-border bg-background/50 p-4">
+            <div className="flex items-center gap-2 text-[13px] font-bold text-foreground">
+              <Server className="h-4 w-4 text-primary" />System Memory (RAM)
+            </div>
+            <div className="mt-2 text-[12px] text-muted-foreground">
+              Minimum 4 GB LPDDR4X RAM for holding compact PatchCore feature memory banks and quantized coreset index structures without memory swapping.
+            </div>
+            <div className="mt-3 pt-2 border-t border-border flex justify-between text-[11px] font-mono">
+              <span className="text-muted-foreground">Memory Req:</span>
+              <span className="text-[var(--color-success)] font-bold">&gt;= 4 GB RAM</span>
+            </div>
+          </div>
+
+          <div className="rounded-md border border-border bg-background/50 p-4">
+            <div className="flex items-center gap-2 text-[13px] font-bold text-foreground">
+              <HardDrive className="h-4 w-4 text-primary" />Storage Interface
+            </div>
+            <div className="mt-2 text-[12px] text-muted-foreground">
+              Standard Class 10 MicroSD card or USB 3.0 SSD boot drive required for lightweight Edge AI model weight loading and local SQLite defect logging.
+            </div>
+            <div className="mt-3 pt-2 border-t border-border flex justify-between text-[11px] font-mono">
+              <span className="text-muted-foreground">Read Bandwidth:</span>
+              <span className="text-[var(--color-success)] font-bold">&gt;= 100 MB/s</span>
+            </div>
+          </div>
+
+          <div className="rounded-md border border-border bg-background/50 p-4">
+            <div className="flex items-center gap-2 text-[13px] font-bold text-foreground">
+              <Zap className="h-4 w-4 text-primary" />Optical Sensor Interface
+            </div>
+            <div className="mt-2 text-[12px] text-muted-foreground">
+              Raspberry Pi Camera Module 3 (IMX708) or standard USB webcam via V4L2 drivers supporting continuous trigger capture and edge inspection.
+            </div>
+            <div className="mt-3 pt-2 border-t border-border flex justify-between text-[11px] font-mono">
+              <span className="text-muted-foreground">Trigger Rate:</span>
+              <span className="text-[var(--color-success)] font-bold">&gt;= 15 FPS</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -110,7 +215,7 @@ function Monitoring() {
         </Card>
       </div>
 
-      <div className="mt-6 rounded-lg border border-border bg-card overflow-hidden">
+      <div className="mt-6 rounded-lg border border-border bg-card overflow-hidden shadow-sm">
         <div className="flex items-center justify-between border-b border-border px-5 py-3">
           <div>
             <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Deployed models</div>
@@ -159,7 +264,7 @@ const tt = { background: "oklch(0.21 0.014 260)", border: "1px solid oklch(0.28 
 
 function Card({ title, subtitle, children }: any) {
   return (
-    <div className="rounded-lg border border-border bg-card p-5">
+    <div className="rounded-lg border border-border bg-card p-5 shadow-sm">
       <div className="mb-3">
         <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{title}</div>
         <div className="text-[14px] font-semibold">{subtitle}</div>
